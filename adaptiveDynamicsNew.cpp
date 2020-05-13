@@ -1,10 +1,10 @@
 /*
-    adaptiveDynamicsNew.cpp
+    adaptiveDynamics_initialNeighborAssignment.cpp
     Author: Gregory Kimmel
     Date: 06/12/2019
 
     This file calculates the evolution of neighborhood size and production traits over generations,
-    starting from a population with two separate branches.
+    with a neighborhood list randomly assigned at first generation.
 
     USAGE
         ./run_adaptiveDynamics <inputfile> <popsize> <genMax> <recordInt>
@@ -31,11 +31,9 @@
             NSsigma:        Std. dev. of neighborhood size if mutation occurs
             Psigma:         Std. dev. of production trait if mutation occurs
             mutThreshold:   Threshold for mutation to occur
-            N01:            The initial neighborhood size of the first branch
-            N02:            The initial neighborhood size of the second branch
+            N0:             The initial neighborhood size of the population
             stdevN0:        Std. dev. of N0
-            P01:            The initial production trait of the first branch
-            P01:            The initial production trait of the second branch
+            P0:             The initial production trait of the population
             stdevP0:        Std. dev. of P0
             verbosity:      Parameter which controls the output to terminal
 
@@ -68,8 +66,9 @@ using namespace std;
 
 // Details of the functions are found after main()
 void initializePopulationTraits(int popsize, double nMin, double nMax,
-double N0, double stdevN0, double P0, double stdevP0, 
-double *neighborhoodSizes, double *productionTrait, int verbosity);
+double sigma, double beta, double alpha, double kappa, double mu,
+double N0, double stdevN0, double P0, double stdevP0, double *neighborhoodSizes,
+double *productionTrait, int verbosity);
 
 double payoff(double sigma, double beta, double alpha, double kappa, double mu,
 double n, double p, double meanProductionTrait, int verbosity);
@@ -161,7 +160,7 @@ int main(int argc, char* argv[])
     if (fscanf(inputfile, "%lf", &N0) != 1)
     {
         N0 = 60.0;
-        printf("failed to read N01. Using default value.\n");
+        printf("failed to read N0. Using default value.\n");
     }
     if (fscanf(inputfile, "%lf", &stdevN0) != 1)
     {
@@ -171,7 +170,7 @@ int main(int argc, char* argv[])
     if (fscanf(inputfile, "%lf", &P0) != 1)
     {
         P0 = 0.5;
-        printf("failed to read P01. Using default value.\n");
+        printf("failed to read P0. Using default value.\n");
     }
     if (fscanf(inputfile, "%lf", &stdevP0) != 1)
     {
@@ -205,8 +204,8 @@ int main(int argc, char* argv[])
     double *productionRecord = new double [(genMax/recordInt)*popsize];
 
     // Initialize the population traits
-    initializePopulationTraits(popsize, nMin, nMax, N0, stdevN0, 
-    P0, stdevP0, neighborhoodSizes, productionTrait,verbosity);
+    initializePopulationTraits(popsize, nMin, nMax, sigma, beta, alpha, kappa,
+    mu, N0, stdevN0, P0, stdevP0, neighborhoodSizes, productionTrait,verbosity);
 
     // run Adaptive dynamics
     runAdaptiveDynamics(popsize, nMin, nMax, sigma, beta, alpha, kappa,
@@ -261,8 +260,9 @@ int main(int argc, char* argv[])
         neighborhoodSizes and productionTrait initialized.
 */
 void initializePopulationTraits(int popsize, double nMin, double nMax,
-double N0, double stdevN0, double P0, double stdevP0, 
-double *neighborhoodSizes, double *productionTrait, int verbosity)
+double sigma, double beta, double alpha, double kappa, double mu,
+double N0, double stdevN0, double P0, double stdevP0, double *neighborhoodSizes,
+double *productionTrait, int verbosity)
 {
 
     // Generate the random seed
@@ -317,7 +317,8 @@ double *neighborhoodSizes, double *productionTrait, int verbosity)
     OUTPUTS
         payoff = benefit - cost
 */
-double payoff(double sigma, double beta, double alpha, double kappa, double mu, int n, double p, double meanProductionTrait, int verbosity)
+double payoff(double sigma, double beta, double alpha, double kappa, double mu, int n, 
+double p, double meanProductionTrait, int verbosity)
 {
 
     // The expected amount of public good perceived by the individual
@@ -380,10 +381,9 @@ double mutThreshold, double *nsRecord, double *productionRecord, int recordInt, 
     normal_distribution<double> perturbNS(0.0,NSsigma);
     normal_distribution<double> perturbProduction(0.0,Psigma);
 
-    // Initialize random individual to play game against and meanProduction of
-    // public good.
+    //Initialize variables to be used
     int randIndividual, individual, opponent, offspring, i, k, individualNS;
-    int nb, counter, neighbor, neighborStart, neighborInd;
+    int nb, counter, neighbor;
     double meanProductionIndividual, meanProductionOpponent, payoffDiff, w, roll, changeNS, changeProduction;
     double maxPayoff, minPayoff, individualRounded;
     double benefit, cost, expectedPublicGood, mean, sum;
@@ -400,39 +400,35 @@ double mutThreshold, double *nsRecord, double *productionRecord, int recordInt, 
 
     //Assign Neighbors Randomly One Time
     int *NeighborIndex = new int [(popsize*(popsize-1))];
-    
-        for (nb = 0; nb < popsize; nb++)
-        {  
-            //printf("Next individual\n");
-            //Shuffle
-            shuffle(begin(indices), end(indices),rng);
-            //for (k=0; k<popsize; k++)
-            //{
-            //    printf("%d\n",indices[k]);
-            //}
-            counter=0;
+    for (nb = 0; nb < popsize; nb++)
+    {  
+        //Shuffle
+        shuffle(begin(indices), end(indices),rng);
             
-            //printf("%d\n",nb);
-            for (k=0; k<(popsize); k++)
+        //Set counter to zero
+        counter=0;
+            
+        //Cycle through and assign neighbors
+        for (k=0; k<(popsize); k++)
+        {
+            //Make sure neighbor isn't the individual
+            int check = indices[k];
+            if (check==nb)
+                continue;
+            else
             {
-                int check = indices[k];
-               
-                if (check==nb)
-                    continue;
-                else
-                {
-                    counter++;
-                    NeighborIndex[ROW_COL_TO_INDEX(nb,(counter-1),(popsize-1))]=check;
-                }
-                
+                counter++;
+                NeighborIndex[ROW_COL_TO_INDEX(nb,(counter-1),(popsize-1))]=check;
             }
+                
+        }
             
-        }   
+    }   
      
     // Loop through generations
     for (int nGen = 0; nGen < genMax-1; nGen++)
     {
-        //Print updates to terminal
+        //Give updates printed to terminal;
         if (nGen==genMax/50||nGen==genMax/10||nGen==genMax/4||nGen==genMax/2||nGen==genMax*3/4)
         {
             printf("Update: we are at generation ");
@@ -441,45 +437,46 @@ double mutThreshold, double *nsRecord, double *productionRecord, int recordInt, 
             printf("Time elapsed from start: %g seconds\n", (float)(clock()-start)/CLOCKS_PER_SEC);
         }
         
-        // Define the payoff of each individual in the generation (just using the mean excluding individual for sanity)
+        // Initialize array which stores the fitness values each gen.
         double *fitness = new double [popsize];
 
-        // Starting index for this gen.
+        // Starting index tells us where in the array we are starting for this gen.
         int startingIndex = ROW_COL_TO_INDEX(nGen,0,popsize); 
 
-        // Loop through population, defining fitness of each ind.
+        //Now, we loop through the pop. to assign fitness to each ind.
         for (k = 0; k<popsize; k++)
         {
+            //Set initial sum of neighborhood production to zero
             sum=0.0;
+
+            //Round the individual's neighborhood size
             individualRounded = neighborhoodSizes[ROW_COL_TO_INDEX(nGen, k, popsize)]+.5;
             individualNS = (int)(individualRounded);
-            //printf("Next individual\n");
-            //i counts through the index of neighbors we previously assigned
-            neighborStart = uniInt(rng);
 
+            //i counts through the index of neighbors we previously assigned
             for (i = 0; i < individualNS-1; i++)
             { 
-                neighborInd = (neighborStart+i)%(popsize-1);
-                
-                neighbor = NeighborIndex[ROW_COL_TO_INDEX(k,(neighborInd),(popsize-1))];
-                //printf("Neighbor Index = %d\n", neighbor);
-                sum += productionTrait[(neighbor+startingIndex)];
+                //Find who neighbor is
+                neighbor = NeighborIndex[ROW_COL_TO_INDEX(k,i,(popsize-1))];
+
+                //Add neighbor's production to the sum
+                sum += productionTrait[neighbor+startingIndex];
             }
-            
+
+            //Now define the mean neighborhood production (excluding individual)
             if (individualNS>1)
             {
-                //printf("sum is %f\t ns-1 is %d\n", sum, (individualNS-1));
                 mean=sum/(individualNS-1);
-                //printf("mean is: %f\n", mean);
             }
             else
             {
+                //If neighborhood size is 1, no neighborhood production (only individual)
                 mean=0;
             }
-
-            //Payoff Function
+            
+            //Payoff Function gives us the payoff/fitness of each ind. for this gen.
             fitness[k]= payoff(sigma, beta, alpha, kappa, mu, individualNS, productionTrait[ROW_COL_TO_INDEX(nGen, k, popsize)],
-            mean, verbosity);;
+            mean, verbosity);
             
         }
         
@@ -501,8 +498,7 @@ double mutThreshold, double *nsRecord, double *productionRecord, int recordInt, 
             individual = ROW_COL_TO_INDEX(nGen,i,popsize);
             opponent = ROW_COL_TO_INDEX(nGen,randIndividual,popsize);
             
-            //Look at payoff difference
-            // payoff(opponent) - payoff(individual)
+            //Find payoff diference
             payoffDiff = fitness[randIndividual]-fitness[i]; 
 
             // Normalizing the payoff difference. If the max payoff difference
@@ -568,6 +564,7 @@ double mutThreshold, double *nsRecord, double *productionRecord, int recordInt, 
             }
         }
 
+        //Optionally record only every "recordInt" generation (10th, 100th, etc.)
         if (nGen % recordInt == 0)
         {
             int entryNumber = (nGen/recordInt);
@@ -579,3 +576,4 @@ double mutThreshold, double *nsRecord, double *productionRecord, int recordInt, 
         }
     }
 }
+
